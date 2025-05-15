@@ -1,0 +1,76 @@
+´´´ dax
+MedianPerformance =
+AVERAGEX(
+    SUMMARIZE(
+        DeepStudies,
+        DeepStudies[knn], DeepStudies[days],
+        "AvgSTD", MEDIAN(DeepStudies[std. dev. sell-through])
+    ),
+    [AvgSTD]
+)
+´´´
+´´´ dax
+PerformanceStability =
+VAR CurrentKNN = MIN(DeepStudies[knn])
+VAR CurrentDays = MIN(DeepStudies[days])
+RETURN
+STDEVX.P(
+    FILTER(
+        SUMMARIZE(
+            DeepStudies,
+            DeepStudies[study_name],
+            "AvgSTD", AVERAGEX(
+                FILTER(
+                    DeepStudies,
+                    DeepStudies[knn] = CurrentKNN &&
+                    DeepStudies[days] = CurrentDays
+                ),
+                [std. dev. sell-through]
+            )
+        ),
+        [AvgSTD] <> BLANK()
+    ),
+    [AvgSTD]
+)
+´´´
+´´´ dax
+WorstCasePerformance =
+MAXX(
+    SUMMARIZE(
+        DeepStudies,
+        DeepStudies[knn], DeepStudies[days],
+        "MaxSTD", MAX(DeepStudies[std. dev. sell-through])
+    ),
+    [MaxSTD]
+)
+´´´
+´´´ dax
+RobustnessScore =
+VAR Min_Mean = CALCULATE(MINX(VALUES(DeepStudies[knn]), [MedianPerformance]), ALLSELECTED(DeepStudies))
+VAR Max_Mean = CALCULATE(MAXX(VALUES(DeepStudies[knn]), [MedianPerformance]), ALLSELECTED(DeepStudies))
+ 
+VAR Min_Stability = CALCULATE(MINX(VALUES(DeepStudies[knn]), [PerformanceStability]), ALLSELECTED(DeepStudies))
+VAR Max_Stability = CALCULATE(MAXX(VALUES(DeepStudies[knn]), [PerformanceStability]), ALLSELECTED(DeepStudies))
+ 
+VAR Min_WorstCase = CALCULATE(MINX(VALUES(DeepStudies[knn]), [WorstCasePerformance]), ALLSELECTED(DeepStudies))
+VAR Max_WorstCase = CALCULATE(MAXX(VALUES(DeepStudies[knn]), [WorstCasePerformance]), ALLSELECTED(DeepStudies))
+ 
+VAR Norm_Mean = ([MedianPerformance] - Min_Mean) / (Max_Mean - Min_Mean)
+VAR Norm_Stability = ([PerformanceStability] - Min_Stability) / (Max_Stability - Min_Stability)
+VAR Norm_WorstCase = ([WorstCasePerformance] - Min_WorstCase) / (Max_WorstCase - Min_WorstCase)
+ 
+RETURN
+    (0.5 * (1 - Norm_Mean)) +
+    (0.3 * (1 - Norm_Stability)) +
+    (0.2 * (1 - Norm_WorstCase))
+´´´
+
+´´´dax
+AdjustedRobustnessScore =
+IF(
+    [ReliabilityFactor] = 0,
+    BLANK(),  // Don't show scores for unreliable combinations
+    [RobustnessScore] * [ReliabilityFactor]  // Weight by reliability
+)
+
+´´´
